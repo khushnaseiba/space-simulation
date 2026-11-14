@@ -8,11 +8,12 @@ pub struct Circle {
     pub pos: Vec2,
     pub velocity: Vec2,
     pub radius: f32,
+    pub color: String,
 }
 
 impl Circle {
     pub fn draw(&self, ctx: &CanvasRenderingContext2d) {
-        ctx.set_fill_style_str("yellow");
+        ctx.set_fill_style_str(&self.color);
         ctx.begin_path();
         ctx.arc(
             self.pos.x as f64,

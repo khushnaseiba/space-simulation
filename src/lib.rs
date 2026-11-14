@@ -1,9 +1,15 @@
-use crate::{circle::Circle, prelude::*, vec2::Vec2};
+use crate::{
+    circle::Circle,
+    gravity_solver::{GRAVITATIONAL_CONSTANT, GravitySolver},
+    prelude::*,
+    vec2::Vec2,
+};
 
 use wasm_bindgen::prelude::*;
 
 mod animation_frame;
 mod circle;
+mod gravity_solver;
 mod prelude;
 mod vec2;
 
@@ -22,14 +28,33 @@ fn start() -> Result<(), JsValue> {
 
     let game_width = window().inner_width().unwrap().as_f64().unwrap();
     let game_height = window().inner_height().unwrap().as_f64().unwrap();
-    let mut circle = Circle {
+    let sun = Circle {
         pos: Vec2 {
             x: game_width as f32 / 2.0,
             y: game_height as f32 / 2.0,
         },
-        velocity: Vec2 { x: 200.0, y: 400.0 },
+        velocity: Vec2 { x: 0.0, y: 0.0 },
         radius: 100.0,
+        color: "yellow".to_string(),
     };
+
+    let orbit_radius = 250.0;
+    let orbital_speed = (GRAVITATIONAL_CONSTANT * sun.radius * sun.radius / orbit_radius).sqrt();
+
+    let earth = Circle {
+        pos: Vec2 {
+            x: sun.pos.x + orbit_radius,
+            y: sun.pos.y,
+        },
+        velocity: Vec2 {
+            x: 0.0,
+            y: orbital_speed,
+        },
+        radius: 20.0,
+        color: "green".to_string(),
+    };
+
+    let mut objects = vec![sun, earth];
 
     let mut last_time: f64 = window().performance().unwrap().now();
 
@@ -51,7 +76,10 @@ fn start() -> Result<(), JsValue> {
         }
 
         ctx.clear_rect(0.0, 0.0, game_width, game_height);
-        circle.draw(&ctx);
+        GravitySolver::apply(&mut objects, dt);
+        for object in &objects {
+            object.draw(&ctx);
+        }
         true
     });
     Ok(())
