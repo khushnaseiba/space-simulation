@@ -1,9 +1,4 @@
-use crate::{
-    circle::Circle,
-    gravity_solver::{GRAVITATIONAL_CONSTANT, GravitySolver},
-    prelude::*,
-    vec2::Vec2,
-};
+use crate::{circle::Circle, gravity_solver::GravitySolver, prelude::*, vec2::Vec2};
 
 use std::{cell::RefCell, rc::Rc};
 
@@ -14,6 +9,12 @@ mod circle;
 mod gravity_solver;
 mod prelude;
 mod vec2;
+
+thread_local! {
+    static OBJECTS: RefCell<Vec<Circle>> = const { RefCell::new(Vec::new()) };
+    static PREVIEW: RefCell<Option<Circle>> = const { RefCell::new(None) };
+    static PAN_OFFSET: RefCell<Vec2> = const { RefCell::new(Vec2 { x: 0.0, y: 0.0 }) };
+}
 
 struct PanState {
     dragging: bool,
@@ -34,35 +35,6 @@ fn start() -> Result<(), JsValue> {
         .dyn_into()
         .unwrap();
 
-    let game_width = window().inner_width().unwrap().as_f64().unwrap();
-    let game_height = window().inner_height().unwrap().as_f64().unwrap();
-    let sun = Circle {
-        pos: Vec2 {
-            x: game_width as f32 / 2.0,
-            y: game_height as f32 / 2.0,
-        },
-        velocity: Vec2 { x: 0.0, y: 0.0 },
-        radius: 100.0,
-        color: "yellow".to_string(),
-    };
-
-    let orbit_radius = 250.0;
-    let orbital_speed = (GRAVITATIONAL_CONSTANT * sun.radius * sun.radius / orbit_radius).sqrt();
-
-    let earth = Circle {
-        pos: Vec2 {
-            x: sun.pos.x + orbit_radius,
-            y: sun.pos.y,
-        },
-        velocity: Vec2 {
-            x: 0.0,
-            y: orbital_speed,
-        },
-        radius: 20.0,
-        color: "green".to_string(),
-    };
-
-    let mut objects = vec![sun, earth];
     let pan = Rc::new(RefCell::new(PanState {
         dragging: false,
         last_position: Vec2 { x: 0.0, y: 0.0 },
@@ -96,6 +68,7 @@ fn start() -> Result<(), JsValue> {
                 let delta = position - pan.last_position;
                 pan.offset += delta;
                 pan.last_position = position;
+                PAN_OFFSET.with(|offset| *offset.borrow_mut() = pan.offset);
                 event.prevent_default();
             }
         });
@@ -149,12 +122,74 @@ fn start() -> Result<(), JsValue> {
         let offset = pan.borrow().offset;
         ctx.save();
         ctx.translate(offset.x as f64, offset.y as f64).unwrap();
-        GravitySolver::apply(&mut objects, dt);
-        for object in &objects {
-            object.draw(&ctx);
-        }
+        OBJECTS.with(|objects| {
+            let mut objects = objects.borrow_mut();
+            GravitySolver::apply(&mut objects, dt);
+            for object in objects.iter() {
+                object.draw(&ctx);
+            }
+        });
+        PREVIEW.with(|preview| {
+            if let Some(preview) = preview.borrow().as_ref() {
+                OBJECTS.with(|objects| {
+                    let path = GravitySolver::predict_path(preview, &objects.borrow());
+                    preview.draw_preview(&ctx, &path);
+                });
+            }
+        });
         ctx.restore();
         true
     });
     Ok(())
+}
+
+#[wasm_bindgen]
+pub fn create_object(x: f32, y: f32, radius: f32, velocity_x: f32, velocity_y: f32, color: String) {
+    OBJECTS.with(|objects| {
+        objects.borrow_mut().push(Circle {
+            pos: Vec2 { x, y },
+            velocity: Vec2 {
+                x: velocity_x,
+                y: velocity_y,
+            },
+            radius,
+            color,
+        });
+    });
+}
+
+#[wasm_bindgen]
+pub fn set_preview(
+    x: f32,
+    y: f32,
+    velocity_x: f32,
+    velocity_y: f32,
+    radius: f32,
+    color: String,
+    visible: bool,
+) {
+    if !visible {
+        PREVIEW.with(|preview| *preview.borrow_mut() = None);
+        return;
+    }
+
+    PREVIEW.with(|preview| {
+        *preview.borrow_mut() = Some(Circle {
+            pos: Vec2 { x, y },
+            velocity: Vec2 {
+                x: velocity_x,
+                y: velocity_y,
+            },
+            radius,
+            color,
+        });
+    });
+}
+
+#[wasm_bindgen]
+pub fn get_pan_offset() -> Vec<f32> {
+    PAN_OFFSET.with(|offset| {
+        let offset = *offset.borrow();
+        vec![offset.x, offset.y]
+    })
 }

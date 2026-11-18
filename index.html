@@ -24,14 +24,189 @@
         height: 100%;
         width: 100%;
       }
+
+      #object-menu {
+        position: fixed;
+        top: 16px;
+        right: 16px;
+        z-index: 1;
+        width: min(320px, calc(100vw - 32px));
+        padding: 16px;
+        border: 1px solid #465267;
+        border-radius: 10px;
+        background: rgb(15 20 30 / 92%);
+        color: #f4f6fa;
+        font: 14px system-ui, sans-serif;
+      }
+
+      #object-menu h1 {
+        margin-bottom: 12px;
+        font-size: 16px;
+      }
+
+      #object-form {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+      }
+
+      #object-form .wide {
+        grid-column: 1 / -1;
+      }
+
+      #object-form label {
+        display: grid;
+        gap: 4px;
+        color: #c8d0de;
+      }
+
+      #object-form button {
+        width: 100%;
+        min-width: 0;
+        height: 34px;
+        padding: 6px 8px;
+        border: 1px solid #465267;
+        border-radius: 5px;
+        background: #202838;
+        color: #fff;
+        font: inherit;
+      }
+
+      #object-form input[type="color"] {
+        width: 100%;
+        min-width: 0;
+        height: 34px;
+        padding: 3px;
+        border: 1px solid #465267;
+        border-radius: 5px;
+        background: #202838;
+      }
+
+      #object-form input[type="range"] {
+        width: 100%;
+        accent-color: #65cf8b;
+      }
+
+      #object-form button {
+        grid-column: 1 / -1;
+        border: 0;
+        background: #26734a;
+        cursor: pointer;
+        font-weight: 600;
+      }
+
     </style>
   </head>
   <body>
     <canvas id="canvas"></canvas>
+    <aside id="object-menu">
+      <h1>Create object</h1>
+      <form id="object-form">
+        <label>
+          Color
+          <input id="object-color" type="color" value="#00ff00" />
+        </label>
+        <label class="wide">
+          <span>Radius: <output id="object-radius-value">20 px</output></span>
+          <input id="object-radius" type="range" min="5" max="100" step="1" value="20" />
+        </label>
+        <button class="wide" type="submit">Add object</button>
+      </form>
+    </aside>
     <script type="module">
-      import init from "./pkg/space_simulation.js";
+      import init, { create_object, get_pan_offset, set_preview } from "./pkg/space_simulation.js";
 
       await init();
+
+      const canvas = document.getElementById("canvas");
+      const radius = document.getElementById("object-radius");
+      const color = document.getElementById("object-color");
+      function scenePosition(x, y) {
+        const offset = get_pan_offset();
+        return [x - offset[0], y - offset[1]];
+      }
+
+      const [initialX, initialY] = scenePosition(window.innerWidth / 2 + 350, window.innerHeight / 2);
+      const preview = {
+        x: initialX,
+        y: initialY,
+        velocityX: 0,
+        velocityY: 0,
+        startX: 0,
+        startY: 0,
+        dragging: false,
+        hasDragged: false,
+      };
+
+      function updatePreview(visible = true) {
+        set_preview(
+          preview.x,
+          preview.y,
+          preview.velocityX,
+          preview.velocityY,
+          Number(radius.value),
+          color.value,
+          visible,
+        );
+      }
+
+      canvas.addEventListener("mousedown", (event) => {
+        if (event.button !== 0) return;
+        [preview.x, preview.y] = scenePosition(event.clientX, event.clientY);
+        preview.startX = event.clientX;
+        preview.startY = event.clientY;
+        preview.velocityX = 0;
+        preview.velocityY = 0;
+        preview.dragging = true;
+        updatePreview();
+        event.preventDefault();
+      });
+
+      window.addEventListener("mousemove", (event) => {
+        if (preview.dragging) {
+          preview.velocityX = preview.startX - event.clientX;
+          preview.velocityY = preview.startY - event.clientY;
+          updatePreview();
+        } else if (!preview.hasDragged && event.target === canvas && !(event.buttons & 2)) {
+          [preview.x, preview.y] = scenePosition(event.clientX, event.clientY);
+          preview.velocityX = 0;
+          preview.velocityY = 0;
+          updatePreview();
+        }
+      });
+
+      window.addEventListener("mouseup", (event) => {
+        if (event.button !== 0 || !preview.dragging) return;
+        preview.velocityX = preview.startX - event.clientX;
+        preview.velocityY = preview.startY - event.clientY;
+        preview.dragging = false;
+        preview.hasDragged = true;
+        updatePreview();
+      });
+
+      radius.addEventListener("input", () => {
+        document.getElementById("object-radius-value").textContent = `${radius.value} px`;
+        updatePreview();
+      });
+      color.addEventListener("input", () => updatePreview());
+      updatePreview();
+
+      document.getElementById("object-form").addEventListener("submit", (event) => {
+        event.preventDefault();
+        create_object(
+          preview.x,
+          preview.y,
+          Number(radius.value),
+          preview.velocityX,
+          preview.velocityY,
+          color.value,
+        );
+        preview.velocityX = 0;
+        preview.velocityY = 0;
+        preview.dragging = false;
+        preview.hasDragged = false;
+        updatePreview(false);
+      });
     </script>
   </body>
 </html>

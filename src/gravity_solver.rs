@@ -5,6 +5,19 @@ pub const GRAVITATIONAL_CONSTANT: f32 = 500.0;
 pub struct GravitySolver;
 
 impl GravitySolver {
+    pub fn predict_path(object: &Circle, objects: &[Circle]) -> Vec<Vec2> {
+        let mut prediction = objects.to_vec();
+        prediction.push(object.clone());
+        let mut path = Vec::with_capacity(160);
+
+        for _ in 0..160 {
+            Self::apply(&mut prediction, 0.05);
+            path.push(prediction.last().unwrap().pos);
+        }
+
+        path
+    }
+
     pub fn apply(objects: &mut [Circle], dt: f32) {
         let mut accelerations = vec![Vec2 { x: 0.0, y: 0.0 }; objects.len()];
 
